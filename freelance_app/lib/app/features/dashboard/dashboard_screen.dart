@@ -1,59 +1,72 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+// --- Imports for Navigation and State Management ---
 import 'package:freelance_app/app/navigation/bottom_nav_bar.dart';
+import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 
-// ⭐ 1. Import the bottom_nav_bar file to access its public State class.
-
-
+/// The main landing screen of the app, providing a dynamic overview of key metrics.
+///
+/// This screen listens to the central [ProposalService] to display live data for
+/// active projects, proposals, and earnings, ensuring the information is always
+/// up-to-date with the user's actions.
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
-  /// This helper function finds the MainNavigator's state in the widget tree
-  /// and calls the public 'goToTab' method to change the active tab.
+  /// Navigates to a specific tab on the main bottom navigation bar.
   void _navigateToTab(BuildContext context, int index) {
-    // ⭐ FIX: We now correctly reference the public 'MainNavigatorState' class.
-    // This resolves the "isn't a type" error.
     final mainNavigatorState = context.findAncestorStateOfType<MainNavigatorState>();
     mainNavigatorState?.goToTab(index);
   }
 
   @override
   Widget build(BuildContext context) {
+    // We watch the service, so this widget rebuilds whenever data changes.
+    final proposalService = context.watch<ProposalService>();
+
+    // Get live counts directly from the service's getters.
+    final activeProjectsCount = proposalService.acceptedProposals.length;
+    final activeProposalsCount = proposalService.activeProposals.length;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: const Text('Home'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notifications screen would open here.')),
-              );
-            },
-          ),
+            IconButton(
+                icon: const Icon(Icons.notifications_none),
+                onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Notifications screen would be here.')),
+                    );
+                },
+            ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // Wrap cards with GestureDetector to make them tappable.
           GestureDetector(
-            onTap: () => _navigateToTab(context, 1), // Index 1 is the 'Projects' tab
-            child: _buildSummaryCard(context, 'Active Projects', '3', Icons.work_outline),
+            onTap: () => _navigateToTab(context, 2), // Index 2 is 'Projects'
+            child: _buildSummaryCard(context, 'Active Projects', '$activeProjectsCount', Icons.work),
           ),
           GestureDetector(
-            onTap: () => _navigateToTab(context, 3), // Index 3 is the 'Inbox' tab
-            child: _buildSummaryCard(context, 'New Messages', '5', Icons.mail_outline),
+            onTap: () => _navigateToTab(context, 1), // Index 1 is 'Proposals'
+            child: _buildSummaryCard(context, 'Active Proposals', '$activeProposalsCount', Icons.description),
           ),
-          // This card remains non-tappable as an example.
-          _buildSummaryCard(context, 'Pending Tasks', '8', Icons.task_alt),
           const SizedBox(height: 20),
-          _buildEarningsOverview(context),
+          // We pass the new, accurate earnings data to our helper widget.
+          _buildEarningsOverview(
+            context,
+            proposalService.totalReceivedEarnings,
+            proposalService.totalPendingEarnings,
+          ),
         ],
       ),
     );
   }
 
-  /// Builds a reusable summary card widget for the dashboard.
+  /// Builds a tappable summary card for the dashboard's top section.
   Widget _buildSummaryCard(BuildContext context, String title, String value, IconData icon) {
     return Card(
       elevation: 2.0,
@@ -66,8 +79,11 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  /// Builds the earnings overview card with updated currency.
-  Widget _buildEarningsOverview(BuildContext context) {
+  /// Builds the dynamic earnings overview card with clear labels.
+  Widget _buildEarningsOverview(BuildContext context, double received, double pending) {
+    final formattedReceived = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(received);
+    final formattedPending = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(pending);
+
     return Card(
       elevation: 2.0,
       child: Padding(
@@ -77,21 +93,19 @@ class DashboardScreen extends StatelessWidget {
           children: [
             Text('Earnings Overview', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Recent Earnings', style: TextStyle(fontSize: 16)),
-                // ⭐ UI UPDATE: Currency changed to Rupees (₹)
-                Text('₹1,25,000.00', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('Received Earnings', style: TextStyle(fontSize: 16)),
+                Text(formattedReceived, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
               ],
             ),
             const SizedBox(height: 8),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Pending Payments', style: TextStyle(fontSize: 16)),
-                // ⭐ UI UPDATE: Currency changed to Rupees (₹)
-                Text('₹80,000.00', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange)),
+                const Text('Pending Payments', style: TextStyle(fontSize: 16)),
+                Text(formattedPending, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange)),
               ],
             ),
           ],

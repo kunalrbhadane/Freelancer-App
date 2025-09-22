@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:freelance_app/app/features/projects/project_list_screen.dart';
+import 'package:provider/provider.dart';
 
-// --- Imports for Models and Navigation ---
+// --- Imports for Models and State Management ---
 import 'package:freelance_app/app/features/projects/project_model.dart';
-import 'package:freelance_app/app/features/proposals/create_proposal_screen.dart';
-import 'package:freelance_app/app/features/proposals/proposal_model.dart';
-// This import is crucial as it contains the static 'ProposalData' class.
+import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 
-
-
-/// A screen that displays detailed information about a single project.
+/// Displays the details and progress of a single active project.
 ///
-/// This is a StatefulWidget to manage the state of the interactive stepper
-/// for project phases and to handle the result of the proposal submission flow.
+/// This screen allows the freelancer to track the project's phases and,
+/// most importantly, to mark the project as "Paid" once the work is complete
+/// and payment has been received.
 class ProjectDetailsScreen extends StatefulWidget {
   final Project project;
 
@@ -23,55 +20,21 @@ class ProjectDetailsScreen extends StatefulWidget {
 }
 
 class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
-  // State variable to track the current active phase in the stepper.
-  int _currentStep = 0; // Start at the first step
+  // State variable to track the current phase in the stepper
+  int _currentStep = 0;
 
-  // Static list of phases for the project stepper UI.
+  // Static list of phases for the project stepper
   final List<String> _projectPhases = [
     'Research & Discovery',
     'Wireframing & Prototyping',
     'High-Fidelity UI Design',
-    'Developer Handoff',
+    'Developer Handoff & Completion',
   ];
-
-  /// Handles the entire "Apply for Project" workflow.
-  Future<void> _applyForProject() async {
-    // 1. Navigate to the CreateProposalScreen and wait for a result.
-    // The `<Proposal>` type argument tells Flutter what kind of data to expect back.
-    final newProposal = await Navigator.of(context).push<Proposal>(
-      MaterialPageRoute(
-        builder: (context) => CreateProposalScreen(projectTitle: widget.project.title),
-      ),
-    );
-
-    // 2. Check if a proposal was actually submitted (and not just cancelled).
-    if (newProposal != null) {
-      // 3. Update the shared static list of proposals. This simulates updating a backend database.
-      // We use `insert(0, ...)` to add the new proposal to the top of the list.
-      setState(() {
-         ProposalData.proposals.insert(0, newProposal);
-      });
-
-      // 4. Provide immediate feedback to the user with a confirmation message.
-      if (mounted) { // Best practice check to ensure the widget is still in the tree
-          ScaffoldMessenger.of(context)
-            ..removeCurrentSnackBar() // Remove any existing snackbars
-            ..showSnackBar(
-              const SnackBar(
-                content: Text('Your proposal has been submitted successfully!'),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    // The DefaultTabController coordinates the TabBar and the TabBarView.
     return DefaultTabController(
-      length: 3, // Updated to 3 tabs: Overview, Phases, Files
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.project.title),
@@ -84,11 +47,30 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
             ],
           ),
         ),
-        // A prominent, user-friendly button for the primary action on this screen.
+        // ⭐ STAR SERVICE: The Floating Action Button is the primary action on this screen.
+        // It triggers the change from a "Pending Payment" to "Received Earning".
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: _applyForProject,
-          label: const Text('Apply Now'),
-          icon: const Icon(Icons.send),
+          onPressed: () {
+            // 1. Get the ProposalService instance without listening for changes.
+            Provider.of<ProposalService>(context, listen: false).markAsPaid(widget.project.id);
+            
+            // 2. Show a confirmation SnackBar to the user.
+            ScaffoldMessenger.of(context)
+              ..removeCurrentSnackBar()
+              ..showSnackBar(
+                const SnackBar(
+                  content: Text('Project marked as paid! Earnings updated.'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              
+            // 3. Pop the screen to return to the project list.
+            Navigator.of(context).pop();
+          },
+          label: const Text('Mark as Paid'),
+          icon: const Icon(Icons.check_circle_outline),
+          backgroundColor: Colors.green,
         ),
         body: TabBarView(
           children: [
@@ -101,11 +83,11 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  /// Builds the "Overview" tab with project description, budget, deadline, and skills.
+  /// Builds the "Overview" tab with project details.
   Widget _buildOverviewTab(BuildContext context) {
+    // We add padding to the bottom to ensure the FAB doesn't hide any content.
     return SingleChildScrollView(
-      // Add padding to the bottom to ensure the FAB doesn't hide content.
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -125,12 +107,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  /// Builds the "Phases" tab with a modern, interactive stepper UI.
+  /// Builds the "Phases" tab with an interactive stepper for tracking progress.
   Widget _buildPhasesTab(BuildContext context) {
     return Stepper(
-      // Controls which step is currently active.
       currentStep: _currentStep,
-      // Actions for the stepper controls.
       onStepTapped: (step) => setState(() => _currentStep = step),
       onStepContinue: () {
         if (_currentStep < _projectPhases.length - 1) {
@@ -142,7 +122,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
           setState(() => _currentStep -= 1);
         }
       },
-      // Generates the steps dynamically from the `_projectPhases` list.
       steps: List.generate(
         _projectPhases.length,
         (index) {
@@ -153,7 +132,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
               child: const Text('Details and deliverables for this phase go here.'),
             ),
             isActive: _currentStep >= index,
-            // Visually indicates progress: completed, current, or upcoming.
             state: _currentStep > index ? StepState.complete :
                    _currentStep == index ? StepState.editing : StepState.indexed,
           );
@@ -162,7 +140,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  /// Builds the "Files" tab with a simple list of project-related documents.
+  /// Builds the "Files" tab with a mock list of project documents.
   Widget _buildFilesTab(BuildContext context) {
     return ListView(
       children: [
@@ -186,7 +164,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  // --- Reusable Helper Widgets ---
+  // --- Reusable Helper Widgets for this Screen ---
 
   Widget _buildDetailCard(BuildContext context, String title, String content) => Card(
     child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

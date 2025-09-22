@@ -1,13 +1,9 @@
-// lib/app/features/proposals/create_proposal_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:freelance_app/app/features/proposals/proposal_model.dart';
 
 class CreateProposalScreen extends StatefulWidget {
-  final String projectTitle;
-
-  const CreateProposalScreen({super.key, required this.projectTitle});
+  const CreateProposalScreen({super.key});
 
   @override
   State<CreateProposalScreen> createState() => _CreateProposalScreenState();
@@ -15,39 +11,37 @@ class CreateProposalScreen extends StatefulWidget {
 
 class _CreateProposalScreenState extends State<CreateProposalScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController();
-  final _coverLetterController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _fieldController = TextEditingController();
+  final _budgetController = TextEditingController();
 
   void _submitProposal() {
-    // Validate the form input
     if (_formKey.currentState!.validate()) {
-      // Create a new Proposal object with the form data
       final newProposal = Proposal(
-        id: 'p${DateTime.now().millisecondsSinceEpoch}', // Unique ID
-        projectTitle: widget.projectTitle,
-        offeredAmount: double.parse(_amountController.text),
+        id: 'p${DateTime.now().millisecondsSinceEpoch}',
+        projectTitle: _nameController.text,
+        field: _fieldController.text,
+        offeredAmount: double.parse(_budgetController.text),
         submissionDate: DateTime.now(),
-        status: ProposalStatus.Active,
+        status: ProposalStatus.Active, // New proposals are always active
       );
-
-      // Pop the screen and return the newly created proposal object
+      // Return the new proposal object to the list screen
       Navigator.of(context).pop(newProposal);
     }
   }
 
   @override
   void dispose() {
-    _amountController.dispose();
-    _coverLetterController.dispose();
+    _nameController.dispose();
+    _fieldController.dispose();
+    _budgetController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Apply for ${widget.projectTitle}'),
-      ),
+      appBar: AppBar(title: const Text('Create New Proposal')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -55,50 +49,31 @@ class _CreateProposalScreenState extends State<CreateProposalScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Your Proposal', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 24),
-              
               TextFormField(
-                controller: _amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Your Bid Amount (₹)',
-                  prefixText: '₹ ',
-                ),
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Proposal / Project Name'),
+                validator: (value) => (value == null || value.isEmpty) ? 'Please enter a name.' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _fieldController,
+                decoration: const InputDecoration(labelText: 'Field of Work (e.g., Web Development)'),
+                validator: (value) => (value == null || value.isEmpty) ? 'Please enter a field.' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _budgetController,
+                decoration: const InputDecoration(labelText: 'Budget (₹)', prefixText: '₹ '),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a bid amount.';
-                  }
-                  if (double.tryParse(value) == null || double.parse(value) <= 0) {
-                    return 'Please enter a valid amount.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: _coverLetterController,
-                decoration: const InputDecoration(
-                  labelText: 'Cover Letter',
-                  alignLabelWithHint: true, // Good for multi-line fields
-                ),
-                maxLines: 8,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please write a cover letter.';
-                  }
+                  if (value == null || value.isEmpty) return 'Please enter a budget.';
+                  if (double.tryParse(value) == null || double.parse(value) <= 0) return 'Please enter a valid amount.';
                   return null;
                 },
               ),
               const SizedBox(height: 32),
-              
-              ElevatedButton.icon(
-                onPressed: _submitProposal,
-                icon: const Icon(Icons.send),
-                label: const Text('Submit Proposal'),
-              ),
+              ElevatedButton(onPressed: _submitProposal, child: const Text('Save Proposal')),
             ],
           ),
         ),
