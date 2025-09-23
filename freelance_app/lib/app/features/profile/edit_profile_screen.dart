@@ -1,86 +1,112 @@
 import 'package:flutter/material.dart';
+import 'package:freelance_app/app/features/profile/profile_service.dart';
+import 'package:freelance_app/app/features/profile/user_profile_model.dart';
+import 'package:provider/provider.dart';
 
-// This is the class that was missing.
-class EditProfileScreen extends StatelessWidget {
+/// A form screen that allows the user to edit their profile information.
+///
+/// It pre-fills its fields with the current data from [ProfileService] and
+/// calls the service's update method upon successful form submission.
+class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
   @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameController;
+  late TextEditingController _titleController;
+  late TextEditingController _bioController;
+  late TextEditingController _skillsController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Get the current profile data from the service to pre-fill the form.
+    // We use listen: false because this only needs to happen once when the screen is created.
+    final profile = Provider.of<ProfileService>(context, listen: false).userProfile;
+
+    // Initialize controllers with the existing data.
+    _nameController = TextEditingController(text: profile.name);
+    _titleController = TextEditingController(text: profile.title);
+    _bioController = TextEditingController(text: profile.bio);
+    // Convert the list of skills back into a comma-separated string for the text field.
+    _skillsController = TextEditingController(text: profile.skills.join(', '));
+  }
+
+  @override
+  void dispose() {
+    // Always dispose of controllers to prevent memory leaks.
+    _nameController.dispose();
+    _titleController.dispose();
+    _bioController.dispose();
+    _skillsController.dispose();
+    super.dispose();
+  }
+
+  /// Handles form validation and submission.
+  void _submitForm() {
+    if (_formKey.currentState!.validate()) {
+      final profileService = Provider.of<ProfileService>(context, listen: false);
+
+      // Split the skills string into a list, trimming whitespace from each skill.
+      final skillsList = _skillsController.text.split(',').map((s) => s.trim()).toList();
+
+      // Create a new UserProfile object from the form's data.
+      final updatedProfile = UserProfile(
+        name: _nameController.text,
+        title: _titleController.text,
+        bio: _bioController.text,
+        skills: skillsList,
+      );
+
+      // Call the service method to update the app's state.
+      profileService.updateUserProfile(updatedProfile);
+
+      // Return to the profile screen.
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // We can add state later, for now, this is a stateless UI representation.
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Edit Profile"),
-        // Add a save button to the app bar
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save_alt_outlined),
-            tooltip: 'Save Changes',
-            onPressed: () {
-              // In a real app, this would process a form.
-              // For now, show a confirmation and go back.
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Profile changes saved!")),
-              );
-              Navigator.of(context).pop();
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Edit Profile')),
       body: SingleChildScrollView(
-        // Use a Form for better validation and data handling in the future
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Pre-filled with static data for demonstration
               TextFormField(
-                initialValue: "Jane Doe",
-                decoration: const InputDecoration(
-                  labelText: "Full Name",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Full Name'),
+                validator: (v) => v == null || v.isEmpty ? 'Please enter your name.' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: "Senior Flutter Developer & UI Designer",
-                decoration: const InputDecoration(
-                  labelText: "Title / Role",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.work_outline),
-                ),
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Title / Role (e.g., Senior Developer)'),
+                validator: (v) => v == null || v.isEmpty ? 'Please enter your title.' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: "Creative and detail-oriented developer...",
-                decoration: const InputDecoration(
-                  labelText: "Bio",
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true, // Good for multiline fields
-                ),
+                controller: _bioController,
+                decoration: const InputDecoration(labelText: 'Bio', alignLabelWithHint: true),
                 maxLines: 5,
+                validator: (v) => v == null || v.isEmpty ? 'Please enter a bio.' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: "Flutter, UI Design, Firebase, State Management",
-                decoration: const InputDecoration(
-                  labelText: "Skills (comma separated)",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lightbulb_outline),
-                ),
+                controller: _skillsController,
+                decoration: const InputDecoration(labelText: 'Skills (comma-separated)', hintText: 'e.g., Flutter, Dart, Firebase'),
+                validator: (v) => v == null || v.isEmpty ? 'Please enter at least one skill.' : null,
               ),
               const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () {
-                  // This button can do the same as the save icon in the app bar.
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Profile changes saved!")),
-                  );
-                  Navigator.of(context).pop();
-                },
-                child: const Text("Save Changes"),
-              ),
+              ElevatedButton(onPressed: _submitForm, child: const Text('Save Changes')),
             ],
           ),
         ),
