@@ -10,26 +10,57 @@ import 'package:freelance_app/app/features/proposals/create_proposal_screen.dart
 /// A screen that displays and manages all of the freelancer's proposals.
 ///
 /// This screen listens to the central [ProposalService] and automatically
-/// updates its lists when proposals are added or their status changes, providing
+/// updates its lists when proposals are added, updated, or deleted, providing
 /// a fully interactive and stateful experience.
 class ProposalListScreen extends StatelessWidget {
   const ProposalListScreen({super.key});
 
-  /// Handles opening the form screen and adding the new proposal via the service.
-  Future<void> _createNewProposal(BuildContext context) async {
-    final newProposal = await Navigator.of(context).push<Proposal>(
+  /// Handles opening the form screen in 'Create' mode.
+  void _createNewProposal(BuildContext context) {
+    // We are not awaiting a result anymore because the service handles the state update.
+    Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const CreateProposalScreen()),
     );
+  }
 
-    if (newProposal != null) {
-      // Use 'listen: false' as we are inside a function and just calling a method.
-      Provider.of<ProposalService>(context, listen: false).addProposal(newProposal);
-    }
+  /// Handles opening the form screen in 'Edit' mode.
+  void _editProposal(BuildContext context, Proposal proposal) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CreateProposalScreen(proposalToEdit: proposal),
+      ),
+    );
+  }
+
+  /// Shows a confirmation dialog before permanently deleting a proposal.
+  void _showDeleteConfirmationDialog(BuildContext context, Proposal proposal, ProposalService service) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Proposal?'),
+          content: Text('Are you sure you want to permanently delete the proposal for "${proposal.projectTitle}"? This action cannot be undone.'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+              child: const Text('Delete'),
+              onPressed: () {
+                service.deleteProposal(proposal.id);
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // context.watch<...> will make this widget rebuild whenever notifyListeners() is called.
     final proposalService = context.watch<ProposalService>();
 
     return DefaultTabController(
@@ -37,13 +68,11 @@ class ProposalListScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('My Proposals'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Active'),
-              Tab(text: 'Accepted'),
-              Tab(text: 'Declined'),
-            ],
-          ),
+          bottom: const TabBar(tabs: [
+            Tab(text: 'Active'),
+            Tab(text: 'Accepted'),
+            Tab(text: 'Declined'),
+          ]),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => _createNewProposal(context),
@@ -52,7 +81,6 @@ class ProposalListScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            // Each tab is built using the latest filtered list from the service.
             _buildProposalList(context, proposalService.activeProposals),
             _buildProposalList(context, proposalService.acceptedProposals),
             _buildProposalList(context, proposalService.declinedProposals),
@@ -65,23 +93,19 @@ class ProposalListScreen extends StatelessWidget {
   /// Builds a ListView of proposals or a placeholder message if the list is empty.
   Widget _buildProposalList(BuildContext context, List<Proposal> proposalList) {
     if (proposalList.isEmpty) {
-      return Center(
-        child: Text('No proposals in this category.'),
-      );
+      return const Center(child: Text('No proposals in this category.'));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(8.0),
       itemCount: proposalList.length,
       itemBuilder: (context, index) {
-        // We get the service with 'listen: false' because the buttons only call
-        // methods, and the parent widget is already handling the rebuilding.
         final service = Provider.of<ProposalService>(context, listen: false);
         return _buildProposalCard(context, proposalList[index], service);
       },
     );
   }
 
-  /// Builds a single card for a proposal with context-aware action buttons.
+  /// Builds a single card for a proposal with context-aware action buttons and menus.
   Widget _buildProposalCard(BuildContext context, Proposal proposal, ProposalService service) {
     final Color statusColor;
     final String statusText;
@@ -97,7 +121,7 @@ class ProposalListScreen extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -116,11 +140,15 @@ class ProposalListScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Chip(
-                  label: Text(statusText),
-                  backgroundColor: statusColor.withAlpha(51),
-                  labelStyle: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
-                ),
+                // The three-dot menu is only shown for Active proposals.
+                if (proposal.status == ProposalStatus.Active)
+                  _buildPopupMenu(context, proposal, service)
+                else
+                  Chip(
+                    label: Text(statusText),
+                    backgroundColor: statusColor.withAlpha(51),
+                    labelStyle: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
+                  ),
               ],
             ),
             const Divider(height: 24),
@@ -131,21 +159,17 @@ class ProposalListScreen extends StatelessWidget {
                 Text('Sent: $formattedDate', style: TextStyle(color: Colors.grey[600])),
               ],
             ),
-            // ⭐ STAR SERVICE: The dynamic action row is built by the helper below.
-            Padding(
-              padding: const EdgeInsets.only(top: 16.0),
-              child: _buildActionButtons(context, proposal, service),
-            ),
+            // The dynamic action row is built by the helper below.
+            _buildActionButtons(context, proposal, service),
           ],
         ),
       ),
     );
   }
 
-  /// Helper widget to build the correct action buttons for a given proposal status.
+  /// Helper to build the main action buttons at the bottom of the card.
   Widget _buildActionButtons(BuildContext context, Proposal proposal, ProposalService service) {
     switch (proposal.status) {
-      // --- Case 1: If the proposal is ACTIVE ---
       case ProposalStatus.Active:
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -157,14 +181,11 @@ class ProposalListScreen extends StatelessWidget {
             const SizedBox(width: 8),
             ElevatedButton(
               onPressed: () => service.acceptProposal(proposal.id),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
               child: const Text('Accept'),
             ),
           ],
         );
-
-      // --- Case 2: If the proposal is ACCEPTED or DECLINED ---
       case ProposalStatus.Accepted:
       case ProposalStatus.Declined:
         return Row(
@@ -172,15 +193,41 @@ class ProposalListScreen extends StatelessWidget {
           children: [
             OutlinedButton.icon(
               onPressed: () => service.reopenProposal(proposal.id),
-              icon: const Icon(Icons.refresh, size: 18),
+              icon: const Icon(Icons.refresh, size: 16),
               label: const Text('Move to Active'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Theme.of(context).primaryColor,
                 side: BorderSide(color: Theme.of(context).primaryColor.withAlpha(120)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
               ),
             ),
           ],
         );
     }
+  }
+
+  /// Helper to build the three-dot popup menu for active proposals.
+  Widget _buildPopupMenu(BuildContext context, Proposal proposal, ProposalService service) {
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value == 'edit') {
+          _editProposal(context, proposal);
+        } else if (value == 'delete') {
+          _showDeleteConfirmationDialog(context, proposal, service);
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'edit',
+          child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Edit')),
+        ),
+        const PopupMenuItem<String>(
+          value: 'delete',
+          child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete')),
+        ),
+      ],
+    );
   }
 }

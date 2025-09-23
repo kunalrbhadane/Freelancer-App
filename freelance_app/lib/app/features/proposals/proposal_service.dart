@@ -18,7 +18,7 @@ class ProposalService extends ChangeNotifier {
       status: ProposalStatus.Accepted,
       amountPaid: 85000.00,
       deadline: DateTime.parse('2025-10-15'),
-      isComplete: true, // This completed project is also fully paid
+      isComplete: true,
     ),
     Proposal(
       id: 'p2',
@@ -27,7 +27,7 @@ class ProposalService extends ChangeNotifier {
       offeredAmount: 220000.00,
       submissionDate: DateTime.parse('2025-09-15'),
       status: ProposalStatus.Accepted,
-      amountPaid: 50000.00, // This project is ongoing with a partial payment
+      amountPaid: 50000.00,
     ),
     Proposal(
       id: 'p3',
@@ -35,42 +35,21 @@ class ProposalService extends ChangeNotifier {
       field: 'Marketing',
       offeredAmount: 180000.00,
       submissionDate: DateTime.parse('2025-09-10'),
-      status: ProposalStatus.Active, // This proposal is waiting for a response
+      status: ProposalStatus.Active,
     ),
   ];
 
   // --- Public Getters (Safe, read-only access to the state) ---
-
-  /// Returns the complete list of all proposals.
   List<Proposal> get allProposals => _proposals;
-
-  /// Returns a filtered list of proposals with 'Active' status.
   List<Proposal> get activeProposals => _proposals.where((p) => p.status == ProposalStatus.Active).toList();
-
-  /// Returns a filtered list of 'Accepted' proposals (which are the active projects).
   List<Proposal> get acceptedProposals => _proposals.where((p) => p.status == ProposalStatus.Accepted).toList();
-
-  /// Returns a filtered list of proposals with 'Declined' status.
   List<Proposal> get declinedProposals => _proposals.where((p) => p.status == ProposalStatus.Declined).toList();
-
-  /// Calculates the total sum of money yet to be paid for all accepted projects.
-  double get totalPendingEarnings {
-    return acceptedProposals.fold(0.0, (sum, p) => sum + (p.offeredAmount - p.amountPaid));
-  }
-
-  /// Calculates the total sum of all money ever received across all projects.
-  double get totalReceivedEarnings {
-    return _proposals.fold(0.0, (sum, p) => sum + p.amountPaid);
-  }
+  double get totalPendingEarnings => acceptedProposals.fold(0.0, (sum, p) => sum + (p.offeredAmount - p.amountPaid));
+  double get totalReceivedEarnings => _proposals.fold(0.0, (sum, p) => sum + p.amountPaid);
 
   // --- Private State Mutation Helper ---
-
-  /// A private, safe, and robust helper method to update any proposal in the list.
-  ///
-  /// This is the ONLY method that should directly modify the [_proposals] list.
-  /// It finds a proposal by its ID and creates a new instance, preserving all
-  /// old data unless a new value is explicitly provided for a specific property.
-  void _updateProposal(String proposalId, {
+  /// A private helper for making granular updates to a proposal's state.
+  void _updateProposalState(String proposalId, {
     ProposalStatus? newStatus,
     double? newAmountPaid,
     DateTime? newDeadline,
@@ -85,54 +64,67 @@ class ProposalService extends ChangeNotifier {
         field: old.field,
         offeredAmount: old.offeredAmount,
         submissionDate: old.submissionDate,
-        // For each property, use the new value if it's not null, otherwise keep the old one.
         status: newStatus ?? old.status,
         amountPaid: newAmountPaid ?? old.amountPaid,
         deadline: newDeadline ?? old.deadline,
         isComplete: newIsComplete ?? old.isComplete,
       );
-      // This crucial line notifies all listening widgets (like the UI screens)
-      // that the state has changed and they need to rebuild.
       notifyListeners();
     }
   }
 
   // --- Public Methods (The API for the UI to interact with) ---
 
-  /// Adds a newly created proposal to the list and notifies listeners.
+  /// Adds a newly created proposal to the top of the list.
   void addProposal(Proposal proposal) {
     _proposals.insert(0, proposal);
     notifyListeners();
   }
 
+  // ⭐ STAR SERVICE: This is the new method for handling form edits.
+  /// Updates an existing proposal with a new Proposal object.
+  void updateProposal(Proposal updatedProposal) {
+    final index = _proposals.indexWhere((p) => p.id == updatedProposal.id);
+    if (index != -1) {
+      // Replaces the entire object at the specific index.
+      _proposals[index] = updatedProposal;
+      notifyListeners();
+    }
+  }
+
+  // ⭐ STAR SERVICE: This is the new method for removing proposals.
+  /// Removes a proposal from the list by its unique ID.
+  void deleteProposal(String proposalId) {
+    _proposals.removeWhere((p) => p.id == proposalId);
+    notifyListeners();
+  }
+
   /// Changes a proposal's status to 'Accepted'.
-  void acceptProposal(String proposalId) => _updateProposal(proposalId, newStatus: ProposalStatus.Accepted);
+  void acceptProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Accepted);
 
   /// Changes a proposal's status to 'Declined'.
-  void declineProposal(String proposalId) => _updateProposal(proposalId, newStatus: ProposalStatus.Declined);
+  void declineProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Declined);
 
-  /// Reverts an Accepted or Declined proposal back to the 'Active' state.
-  /// Also resets payment and completion status for a clean slate.
-  void reopenProposal(String proposalId) => _updateProposal(proposalId, newStatus: ProposalStatus.Active, newAmountPaid: 0.0, newIsComplete: false);
+  /// Reverts a proposal back to the 'Active' state and resets its progress.
+  void reopenProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Active, newAmountPaid: 0.0, newIsComplete: false);
 
-  /// Adds an installment payment to a specific proposal's `amountPaid` tracker.
+  /// Adds an installment payment to a project.
   void addPayment(String proposalId, double paymentAmount) {
     final index = _proposals.indexWhere((p) => p.id == proposalId);
     if (index != -1) {
       final old = _proposals[index];
-      // Safely calculate the new total, ensuring it cannot exceed the offered amount.
       final newTotalPaid = (old.amountPaid + paymentAmount).clamp(0.0, old.offeredAmount);
-      _updateProposal(proposalId, newAmountPaid: newTotalPaid);
+      _updateProposalState(proposalId, newAmountPaid: newTotalPaid);
     }
   }
 
-  /// Finds a proposal by its ID and updates its deadline property.
+  /// Updates a project's deadline.
   void setDeadline(String proposalId, DateTime deadline) {
-    _updateProposal(proposalId, newDeadline: deadline);
+    _updateProposalState(proposalId, newDeadline: deadline);
   }
 
-  /// Permanently marks a project as complete.
+  /// Marks a project as complete.
   void markProjectAsComplete(String proposalId) {
-    _updateProposal(proposalId, newIsComplete: true);
+    _updateProposalState(proposalId, newIsComplete: true);
   }
 }
