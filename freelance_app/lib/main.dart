@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:freelance_app/app/core/theme/app_theme.dart';
 import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 import 'package:freelance_app/app/features/splash/splash_screen.dart';
-import 'package:provider/provider.dart'; // <-- Import provider
+import 'package:provider/provider.dart'; 
 
 void main() {
   runApp(const MyApp());
