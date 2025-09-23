@@ -1,5 +1,4 @@
 enum ProposalStatus { Active, Accepted, Declined }
-enum PaymentStatus { Unpaid, Paid }
 
 class Proposal {
   final String id;
@@ -8,10 +7,11 @@ class Proposal {
   final double offeredAmount;
   final DateTime submissionDate;
   final ProposalStatus status;
-
-  // ⭐ STAR SERVICE: This is the correctly named and defined property that was missing.
   final double amountPaid;
   final DateTime? deadline;
+  
+  // ⭐ STAR SERVICE: This is the new, persistent property for completion status.
+  final bool isComplete;
 
   Proposal({
     required this.id,
@@ -20,8 +20,9 @@ class Proposal {
     required this.offeredAmount,
     required this.submissionDate,
     required this.status,
-    // Add amountPaid to the constructor with a default value.
     this.amountPaid = 0.0,
     this.deadline,
+    // Add the new property to the constructor with a default value of 'false'.
+    this.isComplete = false,
   });
 }

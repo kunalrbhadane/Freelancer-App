@@ -7,25 +7,24 @@ import 'package:freelance_app/app/navigation/bottom_nav_bar.dart';
 import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 
 /// The main landing screen of the app, providing a dynamic overview of key metrics.
-///
-/// This screen listens to the central [ProposalService] to display live data for
-/// active projects, proposals, and earnings, ensuring the information is always
-/// up-to-date with the user's actions.
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   /// Navigates to a specific tab on the main bottom navigation bar.
   void _navigateToTab(BuildContext context, int index) {
+    // Finds the public state of the MainNavigator widget to call its method
     final mainNavigatorState = context.findAncestorStateOfType<MainNavigatorState>();
     mainNavigatorState?.goToTab(index);
   }
 
   @override
   Widget build(BuildContext context) {
-    // We watch the service, so this widget rebuilds whenever data changes.
+    // ⭐ STAR SERVICE: By using context.watch, this widget subscribes to the
+    // ProposalService. It will automatically rebuild whenever notifyListeners()
+    // is called, ensuring all data displayed is live.
     final proposalService = context.watch<ProposalService>();
 
-    // Get live counts directly from the service's getters.
+    // Get live counts from the service.
     final activeProjectsCount = proposalService.acceptedProposals.length;
     final activeProposalsCount = proposalService.activeProposals.length;
 
@@ -46,6 +45,7 @@ class DashboardScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // These summary cards are tappable and navigate to the correct tabs.
           GestureDetector(
             onTap: () => _navigateToTab(context, 2), // Index 2 is 'Projects'
             child: _buildSummaryCard(context, 'Active Projects', '$activeProjectsCount', Icons.work),
@@ -55,7 +55,7 @@ class DashboardScreen extends StatelessWidget {
             child: _buildSummaryCard(context, 'Active Proposals', '$activeProposalsCount', Icons.description),
           ),
           const SizedBox(height: 20),
-          // We pass the new, accurate earnings data to our helper widget.
+          // We pass the dynamically calculated earnings to our helper widget.
           _buildEarningsOverview(
             context,
             proposalService.totalReceivedEarnings,
@@ -79,8 +79,9 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  /// Builds the dynamic earnings overview card with clear labels.
+  /// Builds the dynamic earnings overview card using live data from the service.
   Widget _buildEarningsOverview(BuildContext context, double received, double pending) {
+    // Use the intl package to format the numbers as Indian Rupees currency.
     final formattedReceived = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(received);
     final formattedPending = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(pending);
 
