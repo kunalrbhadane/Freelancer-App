@@ -1,17 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+// --- Imports for State Management ---
+import 'package:freelance_app/app/core/theme/theme_service.dart';
 
 // --- Imports for Navigation ---
-import 'package:freelance_app/app/features/auth/login_screen.dart'; // For the logout function
+import 'package:freelance_app/app/features/auth/login_screen.dart';
 import 'package:freelance_app/app/features/profile/edit_profile_screen.dart';
 import 'package:freelance_app/app/features/settings/change_password_screen.dart';
 import 'package:freelance_app/app/features/settings/notification_settings_screen.dart';
 import 'package:freelance_app/app/features/settings/payment_settings_screen.dart';
 
+/// A screen that provides access to all user-configurable settings.
+///
+/// This screen allows the user to manage their account, toggle preferences like
+/// Dark Mode, access legal information, and log out of the application.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Get the ThemeService to connect our switch to it. We use 'listen: true' (the default)
+    // because we want the switch icon to update when the theme changes.
+    final themeService = Provider.of<ThemeService>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -19,77 +31,61 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         children: [
           _buildSettingsSectionTitle('Account'),
-          _buildSettingsTile(
-            context,
-            'Edit Profile',
-            Icons.person_outline,
-            // Navigates to the Edit Profile screen
+          _buildSettingsTile(context, 'Edit Profile', Icons.person_outline,
             () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EditProfileScreen())),
           ),
-          _buildSettingsTile(
-            context,
-            'Change Password',
-            Icons.lock_outline,
-            // Navigates to the Change Password screen
+          _buildSettingsTile(context, 'Change Password', Icons.lock_outline,
             () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
           ),
           
           const Divider(),
           
           _buildSettingsSectionTitle('Preferences'),
-          _buildSettingsTile(
-            context,
-            'Notifications',
-            Icons.notifications_none,
-            // Navigates to the Notification Settings screen
+          // ⭐ STAR SERVICE: The Dark Mode toggle switch is now fully integrated.
+          SwitchListTile(
+            title: const Text('Dark Mode'),
+            // The icon changes depending on the current theme state.
+            secondary: Icon(
+              themeService.isDarkMode ? Icons.dark_mode_outlined : Icons.light_mode_outlined
+            ),
+            // The switch's value is bound to the service's 'isDarkMode' property.
+            value: themeService.isDarkMode,
+            // When the switch is flipped, we call the service's method to change the theme.
+            onChanged: (bool value) {
+              themeService.toggleTheme();
+            },
+          ),
+          _buildSettingsTile(context, 'Notifications', Icons.notifications_none,
             () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
           ),
-          _buildSettingsTile(
-            context,
-            'Payment Settings',
-            Icons.payment,
-            // Navigates to the Payment Settings screen
+          _buildSettingsTile(context, 'Payment Settings', Icons.payment,
             () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PaymentSettingsScreen())),
           ),
           
           const Divider(),
           
           _buildSettingsSectionTitle('Support & Legal'),
-          _buildSettingsTile(
-            context,
-            'Help/Support',
-            Icons.help_outline,
-            // Shows an informational dialog
+          _buildSettingsTile(context, 'Help/Support', Icons.help_outline,
             () => _showInfoDialog(context, 'Help/Support', 'For support, please email support@freelanceapp.com or visit our website.'),
           ),
-          _buildSettingsTile(
-            context,
-            'Terms of Service',
-            Icons.article_outlined,
-            // Shows an informational dialog
+          _buildSettingsTile(context, 'Terms of Service', Icons.article_outlined,
             () => _showInfoDialog(context, 'Terms of Service', 'These are the terms and conditions for using our platform... (Static placeholder text).'),
           ),
-          _buildSettingsTile(
-            context,
-            'Privacy Policy',
-            Icons.privacy_tip_outlined,
-            // Shows an informational dialog
+          _buildSettingsTile(context, 'Privacy Policy', Icons.privacy_tip_outlined,
             () => _showInfoDialog(context, 'Privacy Policy', 'We value your privacy. Our policy outlines how we handle your data... (Static placeholder text).'),
           ),
           
           const Divider(),
 
-          // --- LOGOUT TILE ---
+          // The Logout Tile remains unchanged and fully functional.
           ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+            title: Text('Logout', style: TextStyle(color: Theme.of(context).colorScheme.error)),
             onTap: () {
-              // This is the correct way to log out.
-              // It pushes the LoginScreen and removes all other routes
-              // from the navigation stack, so the user can't go back.
+              // Navigates to the Login screen and removes all previous routes from history.
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => LoginScreen()),
-                (Route<dynamic> route) => false, // This predicate removes all routes.
+                (Route<dynamic> route) => false,
               );
             },
           ),
@@ -98,7 +94,9 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  /// Helper widget for creating section titles.
+  // ⭐ STAR SERVICE: All necessary helper methods are included and correct.
+
+  /// Helper widget for creating section titles (e.g., "Account", "Preferences").
   Widget _buildSettingsSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -113,7 +111,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  /// Helper widget for creating a tappable settings list tile.
+  /// Helper widget for creating a standard, tappable settings list tile.
   Widget _buildSettingsTile(BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon),
@@ -123,14 +121,14 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  /// Helper function to show a simple informational dialog.
+  /// Helper function to show a simple informational dialog for legal/support items.
   void _showInfoDialog(BuildContext context, String title, String content) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text(title),
-          content: SingleChildScrollView( // Prevents overflow if content is long
+          content: SingleChildScrollView(
             child: Text(content),
           ),
           actions: <Widget>[

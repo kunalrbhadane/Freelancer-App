@@ -7,39 +7,49 @@ import 'package:freelance_app/app/features/proposals/proposal_model.dart';
 import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 import 'package:freelance_app/app/features/proposals/create_proposal_screen.dart';
 
-/// A screen that displays and manages all of the freelancer's proposals.
-///
-/// This screen listens to the central [ProposalService] and automatically
-/// updates its lists when proposals are added, updated, or deleted, providing
-/// a fully interactive and stateful experience.
-class ProposalListScreen extends StatelessWidget {
+class ProposalListScreen extends StatefulWidget {
   const ProposalListScreen({super.key});
 
-  /// Handles opening the form screen in 'Create' mode.
-  void _createNewProposal(BuildContext context) {
-    // We are not awaiting a result anymore because the service handles the state update.
+  @override
+  State<ProposalListScreen> createState() => _ProposalListScreenState();
+}
+
+class _ProposalListScreenState extends State<ProposalListScreen> {
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      Provider.of<ProposalService>(context, listen: false).search(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _createNewProposal() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const CreateProposalScreen()),
     );
   }
 
-  /// Handles opening the form screen in 'Edit' mode.
-  void _editProposal(BuildContext context, Proposal proposal) {
+  void _editProposal(Proposal proposal) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => CreateProposalScreen(proposalToEdit: proposal),
-      ),
+      MaterialPageRoute(builder: (context) => CreateProposalScreen(proposalToEdit: proposal)),
     );
   }
 
-  /// Shows a confirmation dialog before permanently deleting a proposal.
-  void _showDeleteConfirmationDialog(BuildContext context, Proposal proposal, ProposalService service) {
+  void _showDeleteConfirmationDialog(Proposal proposal, ProposalService service) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Delete Proposal?'),
-          content: Text('Are you sure you want to permanently delete the proposal for "${proposal.projectTitle}"? This action cannot be undone.'),
+          content: Text('Are you sure you want to permanently delete the proposal for "${proposal.projectTitle}"?'),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -75,132 +85,183 @@ class ProposalListScreen extends StatelessWidget {
           ]),
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: () => _createNewProposal(context),
+          onPressed: _createNewProposal,
           tooltip: 'Create Proposal',
           child: const Icon(Icons.add),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            _buildProposalList(context, proposalService.activeProposals),
-            _buildProposalList(context, proposalService.acceptedProposals),
-            _buildProposalList(context, proposalService.declinedProposals),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Column(
+                children: [
+                  _buildSearchBar(),
+                  const SizedBox(height: 8),
+                  _buildFilterChips(proposalService),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildProposalList(proposalService.activeProposals),
+                  _buildProposalList(proposalService.acceptedProposals),
+                  _buildProposalList(proposalService.declinedProposals),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// Builds a ListView of proposals or a placeholder message if the list is empty.
-  Widget _buildProposalList(BuildContext context, List<Proposal> proposalList) {
+  Widget _buildSearchBar() {
+    return TextField(
+      controller: _searchController,
+      decoration: InputDecoration(
+        hintText: 'Search by project title...',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _searchController.text.isNotEmpty
+            ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear())
+            : null,
+        filled: true,
+        contentPadding: EdgeInsets.zero,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30.0), borderSide: BorderSide.none),
+      ),
+    );
+  }
+  
+  Widget _buildFilterChips(ProposalService service) {
+    final fields = service.allFields.toList();
+    if (fields.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 35,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: fields.length,
+        itemBuilder: (context, index) {
+          final field = fields[index];
+          return FilterChip(
+            label: Text(field),
+            selected: service.isActiveFilter(field),
+            onSelected: (_) => service.toggleFilter(field),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+          );
+        },
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+      ),
+    );
+  }
+  
+  Widget _buildProposalList(List<Proposal> proposalList) {
     if (proposalList.isEmpty) {
-      return const Center(child: Text('No proposals in this category.'));
+      final hasActiveFilter = Provider.of<ProposalService>(context, listen: false).hasActiveFilterOrSearch;
+      return Center(child: Text(hasActiveFilter ? 'No proposals match your search/filter.' : 'No proposals in this category.'));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(8.0),
       itemCount: proposalList.length,
       itemBuilder: (context, index) {
         final service = Provider.of<ProposalService>(context, listen: false);
-        return _buildProposalCard(context, proposalList[index], service);
+        return _buildProposalCard(proposalList[index], service);
       },
     );
   }
 
-  /// Builds a single card for a proposal with context-aware action buttons and menus.
-  Widget _buildProposalCard(BuildContext context, Proposal proposal, ProposalService service) {
-    final Color statusColor;
-    final String statusText;
-    switch (proposal.status) {
-      case ProposalStatus.Active: statusColor = Colors.orange; statusText = 'Active'; break;
-      case ProposalStatus.Accepted: statusColor = Colors.green; statusText = 'Accepted'; break;
-      case ProposalStatus.Declined: statusColor = Colors.red; statusText = 'Declined'; break;
-    }
-
+  // ⭐ STAR SERVICE: This is the updated, more compact card design.
+  Widget _buildProposalCard(Proposal proposal, ProposalService service) {
     final formattedDate = DateFormat('MMM d, yyyy').format(proposal.submissionDate);
     final formattedAmount = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(proposal.offeredAmount);
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(proposal.projectTitle, style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 4),
-                      Text(proposal.field, style: Theme.of(context).textTheme.bodyMedium),
+                      Text(proposal.projectTitle, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text(proposal.field, style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // The three-dot menu is only shown for Active proposals.
                 if (proposal.status == ProposalStatus.Active)
-                  _buildPopupMenu(context, proposal, service)
+                  _buildPopupMenu(proposal, service)
                 else
-                  Chip(
-                    label: Text(statusText),
-                    backgroundColor: statusColor.withAlpha(51),
-                    labelStyle: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
-                  ),
+                  _buildStatusChip(context, proposal),
               ],
             ),
-            const Divider(height: 24),
+            const Divider(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(formattedAmount, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('Sent: $formattedDate', style: TextStyle(color: Colors.grey[600])),
+                Text(formattedAmount, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Text('Sent: $formattedDate', style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
-            // The dynamic action row is built by the helper below.
-            _buildActionButtons(context, proposal, service),
+            _buildActionButtons(proposal, service),
           ],
         ),
       ),
     );
   }
-
-  /// Helper to build the main action buttons at the bottom of the card.
-  Widget _buildActionButtons(BuildContext context, Proposal proposal, ProposalService service) {
+  
+  // ⭐ STAR SERVICE: This is the updated, more compact button design.
+  Widget _buildActionButtons(Proposal proposal, ProposalService service) {
     switch (proposal.status) {
       case ProposalStatus.Active:
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            TextButton(
-              onPressed: () => service.declineProposal(proposal.id),
-              child: const Text('Decline', style: TextStyle(color: Colors.red)),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: () => service.acceptProposal(proposal.id),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-              child: const Text('Accept'),
-            ),
-          ],
+        return Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => service.declineProposal(proposal.id),
+                style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                child: const Text('Decline'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => service.acceptProposal(proposal.id),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                child: const Text('Accept'),
+              ),
+            ],
+          ),
         );
       case ProposalStatus.Accepted:
       case ProposalStatus.Declined:
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => service.reopenProposal(proposal.id),
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Move to Active'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Theme.of(context).primaryColor,
-                side: BorderSide(color: Theme.of(context).primaryColor.withAlpha(120)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: OutlinedButton.icon(
+                onPressed: () => service.reopenProposal(proposal.id),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Move to Active'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).primaryColor,
+                  side: BorderSide(color: Theme.of(context).primaryColor.withAlpha(120)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+                ),
               ),
             ),
           ],
@@ -208,26 +269,31 @@ class ProposalListScreen extends StatelessWidget {
     }
   }
 
-  /// Helper to build the three-dot popup menu for active proposals.
-  Widget _buildPopupMenu(BuildContext context, Proposal proposal, ProposalService service) {
+  Widget _buildPopupMenu(Proposal proposal, ProposalService service) {
     return PopupMenuButton<String>(
       onSelected: (value) {
-        if (value == 'edit') {
-          _editProposal(context, proposal);
-        } else if (value == 'delete') {
-          _showDeleteConfirmationDialog(context, proposal, service);
-        }
+        if (value == 'edit') _editProposal(proposal);
+        if (value == 'delete') _showDeleteConfirmationDialog(proposal, service);
       },
-      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-        const PopupMenuItem<String>(
-          value: 'edit',
-          child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Edit')),
-        ),
-        const PopupMenuItem<String>(
-          value: 'delete',
-          child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete')),
-        ),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Edit'))),
+        const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete'))),
       ],
+    );
+  }
+  
+  Widget _buildStatusChip(BuildContext context, Proposal proposal) {
+    final statusColor = proposal.status == ProposalStatus.Accepted ? Colors.green : Colors.red;
+    final statusText = proposal.status.name;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4.0),
+      child: Chip(
+        label: Text(statusText),
+        backgroundColor: statusColor.withAlpha(51),
+        labelStyle: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11),
+        side: BorderSide.none,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+      ),
     );
   }
 }

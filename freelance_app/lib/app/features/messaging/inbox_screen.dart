@@ -8,6 +8,8 @@ class InboxScreen extends StatelessWidget {
     Conversation(id: 'c2', clientName: 'Jane Smith', avatarUrl: 'https://via.placeholder.com/150/771796', lastMessage: 'Can you check the latest file?', timestamp: 'Yesterday'),
   ];
 
+InboxScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

@@ -6,34 +6,35 @@ class UserProfile {
   final String title;
   final String bio;
   final List<String> skills;
+  // ⭐ The new property to store the permanent path to the saved image file.
+  // It is nullable because a user may not have an avatar set.
+  final String? avatarImagePath;
 
   const UserProfile({
     required this.name,
     required this.title,
     required this.bio,
     required this.skills,
+    this.avatarImagePath, // Add to constructor
   });
 
-  // ⭐ STAR SERVICE: NEW SERIALIZATION LOGIC STARTS HERE
-
-  /// Converts this UserProfile object into a Map for JSON storage.
   Map<String, dynamic> toJson() {
     return {
       'name': name,
       'title': title,
       'bio': bio,
-      'skills': skills, // Lists of simple types are directly storable.
+      'skills': skills,
+      'avatarImagePath': avatarImagePath, // Add to JSON
     };
   }
 
-  /// Creates a UserProfile object from a Map (decoded from JSON).
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
       name: json['name'],
       title: json['title'],
       bio: json['bio'],
-      // We cast the result from List<dynamic> to List<String> for type safety.
       skills: List<String>.from(json['skills']),
+      avatarImagePath: json['avatarImagePath'], // Read from JSON
     );
   }
 }

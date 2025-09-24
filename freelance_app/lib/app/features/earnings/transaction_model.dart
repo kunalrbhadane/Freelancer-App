@@ -1,3 +1,4 @@
+// ignore: constant_identifier_names
 enum TransactionType { Payment, Withdrawal }
 
 class Transaction {

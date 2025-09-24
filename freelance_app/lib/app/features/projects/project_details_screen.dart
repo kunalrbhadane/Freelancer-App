@@ -18,7 +18,7 @@ class ProjectDetailsScreen extends StatefulWidget {
 }
 
 class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
-  // Local state for the stepper UI is managed within this screen.
+  // Local state for the stepper UI
   int _currentStep = 0;
   final List<String> _projectPhases = [
     'Research & Discovery',
@@ -27,14 +27,11 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     'Developer Handoff',
   ];
 
-  /// Shows an AlertDialog to let the user enter an installment payment amount.
-  /// It now accepts the pending amount to display and pre-fill the input field.
   Future<void> _showAddPaymentDialog(BuildContext context, {required double pendingAmount}) async {
     final proposalService = Provider.of<ProposalService>(context, listen: false);
     final amountController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    // Pre-fill the text field with the pending amount if it's greater than zero.
     amountController.text = pendingAmount > 0 ? pendingAmount.toStringAsFixed(2) : '';
 
     return showDialog(
@@ -50,10 +47,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
               if (pendingAmount > 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Text(
-                    'Pending: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(pendingAmount)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  child: Text('Pending: ${NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(pendingAmount)}', style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
               Form(
                 key: formKey,
@@ -84,7 +78,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  /// Shows a native date picker dialog and updates the deadline via the service.
   Future<void> _selectDeadline(BuildContext context) async {
     final proposalService = Provider.of<ProposalService>(context, listen: false);
     final currentProposal = proposalService.allProposals.firstWhere((p) => p.id == widget.project.id);
@@ -101,9 +94,15 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // We watch the service here to get the full proposal object, which contains
-    // the completion status and the pending amount for the FAB.
-    final fullProposal = context.watch<ProposalService>().allProposals.firstWhere((p) => p.id == widget.project.id);
+    // ⭐ STAR SERVICE: This is the corrected 'firstWhere' call.
+    // In the unlikely event a project doesn't exist, we provide a safe, empty fallback.
+    final fullProposal = context.watch<ProposalService>().allProposals.firstWhere(
+          (p) => p.id == widget.project.id,
+          orElse: () => Proposal(
+              id: widget.project.id, projectTitle: widget.project.title, field: 'N/A', description: 'Project not found.',
+              offeredAmount: 0, submissionDate: DateTime.now(), status: ProposalStatus.Declined
+          ),
+        );
     final isProjectComplete = fullProposal.isComplete;
     final pendingAmount = fullProposal.offeredAmount - fullProposal.amountPaid;
 
@@ -117,8 +116,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
             Tab(icon: Icon(Icons.align_horizontal_left_rounded), text: 'Phases'),
           ]),
         ),
-        // Hide the FAB if the project is complete; otherwise, it calls the dialog
-        // with the calculated pending amount.
         floatingActionButton: isProjectComplete ? null : FloatingActionButton.extended(
           onPressed: () => _showAddPaymentDialog(context, pendingAmount: pendingAmount),
           label: const Text('Add Payment'),
@@ -131,13 +128,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     );
   }
 
-  /// Builds the "Phases" tab with the conditional payment lock logic.
   Widget _buildPhasesTab(BuildContext context) {
-    // 'watch' is used here because the stepper's controls depend on the proposal's live data.
     final proposalService = context.watch<ProposalService>();
     final fullProposal = proposalService.allProposals.firstWhere((p) => p.id == widget.project.id);
-
-    // If the project is marked as complete, show the celebration animation.
+    
     if (fullProposal.isComplete) {
       return Center(
         child: Padding(
@@ -151,13 +145,11 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
       );
     }
 
-    // Otherwise, show the interactive stepper with dynamic controls.
     return Stepper(
       currentStep: _currentStep,
       onStepTapped: (step) => setState(() => _currentStep = step),
       controlsBuilder: (BuildContext context, ControlsDetails details) {
         final isLastStep = _currentStep == _projectPhases.length - 1;
-
         if (!isLastStep) {
           return Padding(
             padding: const EdgeInsets.only(top: 16.0),
@@ -168,7 +160,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
           );
         } else {
           final isFullyPaid = fullProposal.amountPaid >= fullProposal.offeredAmount;
-
           if (isFullyPaid) {
             return Padding(
               padding: const EdgeInsets.only(top: 16.0),
@@ -184,7 +175,6 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
           } else {
             final pendingAmount = fullProposal.offeredAmount - fullProposal.amountPaid;
             final formattedPending = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(pendingAmount);
-
             return Padding(
               padding: const EdgeInsets.only(top: 16.0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -220,13 +210,11 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     final fullProposal = context.watch<ProposalService>().allProposals.firstWhere(
           (p) => p.id == widget.project.id,
           orElse: () => Proposal(
-            id: widget.project.id, projectTitle: widget.project.title,
-            field: 'N/A', offeredAmount: widget.project.budget,
-            submissionDate: DateTime.now(), status: ProposalStatus.Accepted,
+              id: widget.project.id, projectTitle: widget.project.title, field: 'N/A', description: 'Project not found.',
+              offeredAmount: widget.project.budget, submissionDate: DateTime.now(), status: ProposalStatus.Declined
           ),
         );
     final deadlineText = fullProposal.deadline != null ? DateFormat('MMM d, yyyy').format(fullProposal.deadline!) : 'Tap to set';
-
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       child: Column(
@@ -234,7 +222,8 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
         children: [
           _buildPaymentStatusCard(context, fullProposal.amountPaid, fullProposal.offeredAmount),
           const SizedBox(height: 16),
-          _buildDetailCard(context, 'Project Description', widget.project.description),
+          // ⭐ This now correctly uses the user-entered description from the Proposal object.
+          _buildDetailCard(context, 'Project Description', fullProposal.description),
           const SizedBox(height: 16),
           Row(
             children: [
