@@ -1,45 +1,25 @@
+import 'dart:convert'; // Required for json.encode and json.decode
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import the persistence package
+
 import 'package:freelance_app/app/features/proposals/proposal_model.dart';
 
 /// The central state management service for all proposal and project-related data.
-///
-/// This class extends [ChangeNotifier], allowing UI widgets that listen to it
-/// (using Provider) to automatically update when the underlying data changes.
-/// It acts as the single source of truth for the entire app.
+/// This class handles loading data from storage, modifying it in memory, and
+/// instantly saving every change back to storage.
 class ProposalService extends ChangeNotifier {
-  // --- Private State Data (The "Mock Database") ---
-  final List<Proposal> _proposals = [
-    Proposal(
-      id: 'p1',
-      projectTitle: 'Brand Logo & Style Guide',
-      field: 'Graphic Design',
-      offeredAmount: 85000.00,
-      submissionDate: DateTime.parse('2025-09-12'),
-      status: ProposalStatus.Accepted,
-      amountPaid: 85000.00,
-      deadline: DateTime.parse('2025-10-15'),
-      isComplete: true,
-    ),
-    Proposal(
-      id: 'p2',
-      projectTitle: 'Fitness Tracker App UI/UX',
-      field: 'Mobile App Design',
-      offeredAmount: 220000.00,
-      submissionDate: DateTime.parse('2025-09-15'),
-      status: ProposalStatus.Accepted,
-      amountPaid: 50000.00,
-    ),
-    Proposal(
-      id: 'p3',
-      projectTitle: 'Social Media Marketing',
-      field: 'Marketing',
-      offeredAmount: 180000.00,
-      submissionDate: DateTime.parse('2025-09-10'),
-      status: ProposalStatus.Active,
-    ),
-  ];
+  // The unique key for storing the proposals JSON string in SharedPreferences.
+  static const _proposalsStorageKey = 'proposals_data_v1';
 
-  // --- Public Getters (Safe, read-only access to the state) ---
+  // The in-memory list of proposals. It starts empty and is populated by _loadProposals.
+  List<Proposal> _proposals = [];
+
+  ProposalService() {
+    // When the service is created (at app startup), immediately load the data.
+    _loadProposals();
+  }
+
+  // --- Public Getters (Safe, read-only access to the current state) ---
   List<Proposal> get allProposals => _proposals;
   List<Proposal> get activeProposals => _proposals.where((p) => p.status == ProposalStatus.Active).toList();
   List<Proposal> get acceptedProposals => _proposals.where((p) => p.status == ProposalStatus.Accepted).toList();
@@ -47,9 +27,66 @@ class ProposalService extends ChangeNotifier {
   double get totalPendingEarnings => acceptedProposals.fold(0.0, (sum, p) => sum + (p.offeredAmount - p.amountPaid));
   double get totalReceivedEarnings => _proposals.fold(0.0, (sum, p) => sum + p.amountPaid);
 
-  // --- Private State Mutation Helper ---
-  /// A private helper for making granular updates to a proposal's state.
-  void _updateProposalState(String proposalId, {
+  // --- Persistence Methods ---
+
+  /// Asynchronously saves the current `_proposals` list to the device's local storage.
+  Future<void> _saveProposals() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Convert the List<Proposal> to a List<Map>, then encode it into a JSON string.
+    final List<Map<String, dynamic>> proposalMaps = _proposals.map((p) => p.toJson()).toList();
+    final String encodedData = json.encode(proposalMaps);
+    await prefs.setString(_proposalsStorageKey, encodedData);
+  }
+
+  /// Asynchronously loads proposals from local storage. If no data exists, it loads initial mock data.
+  Future<void> _loadProposals() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? encodedData = prefs.getString(_proposalsStorageKey);
+
+    if (encodedData != null && encodedData.isNotEmpty) {
+      // If data exists, decode the JSON string into a List<dynamic> of maps.
+      final List<dynamic> decodedData = json.decode(encodedData);
+      // Map over the list, converting each map back into a full Proposal object.
+      _proposals = decodedData.map((json) => Proposal.fromJson(json)).toList();
+    } else {
+      // If no data is found (first app launch), populate the list with default mock data.
+      _proposals = _getInitialMockData();
+    }
+    // Notify all listening UI widgets that data is ready.
+    notifyListeners();
+  }
+
+  // --- Public Methods (The API for the UI to interact with) ---
+  // Each method modifies the in-memory list, notifies listeners, and then saves the changes.
+
+  /// Adds a new proposal to the list and saves.
+  void addProposal(Proposal proposal) {
+    _proposals.insert(0, proposal);
+    notifyListeners();
+    _saveProposals();
+  }
+
+  /// Replaces an existing proposal with an updated version and saves.
+  void updateProposal(Proposal updatedProposal) {
+    final index = _proposals.indexWhere((p) => p.id == updatedProposal.id);
+    if (index != -1) {
+      _proposals[index] = updatedProposal;
+      notifyListeners();
+      _saveProposals();
+    }
+  }
+
+  /// Removes a proposal from the list by its ID and saves.
+  void deleteProposal(String proposalId) {
+    _proposals.removeWhere((p) => p.id == proposalId);
+    notifyListeners();
+    _saveProposals();
+  }
+  
+  // --- Methods that use the private state update helper ---
+
+  /// A private helper that performs a granular update, notifies listeners, and saves.
+  void _updateAndSaveProposalState(String proposalId, {
     ProposalStatus? newStatus,
     double? newAmountPaid,
     DateTime? newDeadline,
@@ -59,72 +96,62 @@ class ProposalService extends ChangeNotifier {
     if (index != -1) {
       final old = _proposals[index];
       _proposals[index] = Proposal(
-        id: old.id,
-        projectTitle: old.projectTitle,
-        field: old.field,
-        offeredAmount: old.offeredAmount,
-        submissionDate: old.submissionDate,
-        status: newStatus ?? old.status,
-        amountPaid: newAmountPaid ?? old.amountPaid,
-        deadline: newDeadline ?? old.deadline,
-        isComplete: newIsComplete ?? old.isComplete,
+        id: old.id, projectTitle: old.projectTitle, field: old.field,
+        offeredAmount: old.offeredAmount, submissionDate: old.submissionDate,
+        status: newStatus ?? old.status, amountPaid: newAmountPaid ?? old.amountPaid,
+        deadline: newDeadline ?? old.deadline, isComplete: newIsComplete ?? old.isComplete,
       );
       notifyListeners();
+      _saveProposals();
     }
   }
 
-  // --- Public Methods (The API for the UI to interact with) ---
+  /// Changes a proposal's status to 'Accepted' and saves.
+  void acceptProposal(String proposalId) => _updateAndSaveProposalState(proposalId, newStatus: ProposalStatus.Accepted);
 
-  /// Adds a newly created proposal to the top of the list.
-  void addProposal(Proposal proposal) {
-    _proposals.insert(0, proposal);
-    notifyListeners();
-  }
+  /// Changes a proposal's status to 'Declined' and saves.
+  void declineProposal(String proposalId) => _updateAndSaveProposalState(proposalId, newStatus: ProposalStatus.Declined);
 
-  // ⭐ STAR SERVICE: This is the new method for handling form edits.
-  /// Updates an existing proposal with a new Proposal object.
-  void updateProposal(Proposal updatedProposal) {
-    final index = _proposals.indexWhere((p) => p.id == updatedProposal.id);
-    if (index != -1) {
-      // Replaces the entire object at the specific index.
-      _proposals[index] = updatedProposal;
-      notifyListeners();
-    }
-  }
+  /// Reverts a proposal to 'Active', resets progress, and saves.
+  void reopenProposal(String proposalId) => _updateAndSaveProposalState(proposalId, newStatus: ProposalStatus.Active, newAmountPaid: 0.0, newIsComplete: false);
 
-  // ⭐ STAR SERVICE: This is the new method for removing proposals.
-  /// Removes a proposal from the list by its unique ID.
-  void deleteProposal(String proposalId) {
-    _proposals.removeWhere((p) => p.id == proposalId);
-    notifyListeners();
-  }
-
-  /// Changes a proposal's status to 'Accepted'.
-  void acceptProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Accepted);
-
-  /// Changes a proposal's status to 'Declined'.
-  void declineProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Declined);
-
-  /// Reverts a proposal back to the 'Active' state and resets its progress.
-  void reopenProposal(String proposalId) => _updateProposalState(proposalId, newStatus: ProposalStatus.Active, newAmountPaid: 0.0, newIsComplete: false);
-
-  /// Adds an installment payment to a project.
+  /// Adds a payment to a project and saves.
   void addPayment(String proposalId, double paymentAmount) {
     final index = _proposals.indexWhere((p) => p.id == proposalId);
     if (index != -1) {
       final old = _proposals[index];
       final newTotalPaid = (old.amountPaid + paymentAmount).clamp(0.0, old.offeredAmount);
-      _updateProposalState(proposalId, newAmountPaid: newTotalPaid);
+      _updateAndSaveProposalState(proposalId, newAmountPaid: newTotalPaid);
     }
   }
 
-  /// Updates a project's deadline.
-  void setDeadline(String proposalId, DateTime deadline) {
-    _updateProposalState(proposalId, newDeadline: deadline);
-  }
+  /// Sets a project's deadline and saves.
+  void setDeadline(String proposalId, DateTime deadline) => _updateAndSaveProposalState(proposalId, newDeadline: deadline);
 
-  /// Marks a project as complete.
-  void markProjectAsComplete(String proposalId) {
-    _updateProposalState(proposalId, newIsComplete: true);
+  /// Marks a project as complete and saves.
+  void markProjectAsComplete(String proposalId) => _updateAndSaveProposalState(proposalId, newIsComplete: true);
+  
+  // --- Initial Data ---
+
+  /// Provides a default list of proposals for the very first app launch.
+  List<Proposal> _getInitialMockData() {
+    return [
+      Proposal(
+        id: 'p1', projectTitle: 'Brand Logo & Style Guide', field: 'Graphic Design',
+        offeredAmount: 85000.00, submissionDate: DateTime.parse('2025-09-12'),
+        status: ProposalStatus.Accepted, amountPaid: 85000.00,
+        deadline: DateTime.parse('2025-10-15'), isComplete: true,
+      ),
+      Proposal(
+        id: 'p2', projectTitle: 'Fitness Tracker App UI/UX', field: 'Mobile App Design',
+        offeredAmount: 220000.00, submissionDate: DateTime.parse('2025-09-15'),
+        status: ProposalStatus.Accepted, amountPaid: 50000.00,
+      ),
+      Proposal(
+        id: 'p3', projectTitle: 'Social Media Marketing', field: 'Marketing',
+        offeredAmount: 180000.00, submissionDate: DateTime.parse('2025-09-10'),
+        status: ProposalStatus.Active,
+      ),
+    ];
   }
 }
