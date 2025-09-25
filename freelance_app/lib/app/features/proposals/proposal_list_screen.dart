@@ -6,7 +6,14 @@ import 'package:provider/provider.dart';
 import 'package:freelance_app/app/features/proposals/proposal_model.dart';
 import 'package:freelance_app/app/features/proposals/proposal_service.dart';
 import 'package:freelance_app/app/features/proposals/create_proposal_screen.dart';
+import 'package:freelance_app/app/features/proposals/sort_option_model.dart';
 
+/// The main screen for viewing and managing all proposals.
+///
+/// This screen is a [StatefulWidget] to manage the lifecycle of the search
+/// controller. It connects to the [ProposalService] using Provider to display
+/// live data and provides UI for creating, editing, deleting, filtering,
+/// searching, and sorting proposals.
 class ProposalListScreen extends StatefulWidget {
   const ProposalListScreen({super.key});
 
@@ -15,11 +22,14 @@ class ProposalListScreen extends StatefulWidget {
 }
 
 class _ProposalListScreenState extends State<ProposalListScreen> {
+  // A controller to manage the text in the search bar.
   final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    // Add a listener to the search controller. Every time the text changes,
+    // it will call the search method in our service, triggering a UI update.
     _searchController.addListener(() {
       Provider.of<ProposalService>(context, listen: false).search(_searchController.text);
     });
@@ -27,9 +37,12 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
 
   @override
   void dispose() {
+    // It's crucial to dispose of controllers to prevent memory leaks.
     _searchController.dispose();
     super.dispose();
   }
+
+  // --- Navigation & Dialog Helper Methods ---
 
   void _createNewProposal() {
     Navigator.of(context).push(
@@ -46,26 +59,21 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
   void _showDeleteConfirmationDialog(Proposal proposal, ProposalService service) {
     showDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete Proposal?'),
-          content: Text('Are you sure you want to permanently delete the proposal for "${proposal.projectTitle}"?'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-              child: const Text('Delete'),
-              onPressed: () {
-                service.deleteProposal(proposal.id);
-                Navigator.of(dialogContext).pop();
-              },
-            ),
-          ],
-        );
-      },
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Delete Proposal?'),
+        content: Text('Are you sure you want to permanently delete the proposal for "${proposal.projectTitle}"?'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Delete'),
+            onPressed: () {
+              service.deleteProposal(proposal.id);
+              Navigator.of(dialogContext).pop();
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -79,10 +87,9 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
         appBar: AppBar(
           title: const Text('My Proposals'),
           bottom: const TabBar(tabs: [
-            Tab(text: 'Active'),
-            Tab(text: 'Accepted'),
-            Tab(text: 'Declined'),
+            Tab(text: 'Active'), Tab(text: 'Accepted'), Tab(text: 'Declined'),
           ]),
+          actions: [_buildSortMenu(proposalService), const SizedBox(width: 8)],
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _createNewProposal,
@@ -116,26 +123,49 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
     );
   }
 
+  // --- UI Building Helper Widgets ---
+
+  Widget _buildSortMenu(ProposalService service) {
+    return PopupMenuButton<SortOption>(
+      onSelected: (SortOption selectedOrder) => service.setSortOrder(selectedOrder),
+      icon: const Icon(Icons.sort),
+      tooltip: 'Sort Proposals',
+      itemBuilder: (BuildContext context) {
+        final currentOrder = service.currentSortOrder;
+        return [
+          PopupMenuItem<SortOption>(value: SortOption.newestFirst, child: _buildSortMenuItem('Newest First', currentOrder == SortOption.newestFirst)),
+          PopupMenuItem<SortOption>(value: SortOption.highestBudget, child: _buildSortMenuItem('Highest Budget', currentOrder == SortOption.highestBudget)),
+          PopupMenuItem<SortOption>(value: SortOption.byDeadline, child: _buildSortMenuItem('By Deadline (soonest)', currentOrder == SortOption.byDeadline)),
+        ];
+      },
+    );
+  }
+
+  Widget _buildSortMenuItem(String text, bool isSelected) {
+    return Row(
+      children: [
+        Expanded(child: Text(text)),
+        if (isSelected) Icon(Icons.check, color: Theme.of(context).primaryColor),
+      ],
+    );
+  }
+
   Widget _buildSearchBar() {
     return TextField(
       controller: _searchController,
       decoration: InputDecoration(
         hintText: 'Search by project title...',
         prefixIcon: const Icon(Icons.search),
-        suffixIcon: _searchController.text.isNotEmpty
-            ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear())
-            : null,
+        suffixIcon: _searchController.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear()) : null,
         filled: true,
         contentPadding: EdgeInsets.zero,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(30.0), borderSide: BorderSide.none),
       ),
     );
   }
-  
-  Widget _buildFilterChips(ProposalService service) {
-    final fields = service.allFields.toList();
-    if (fields.isEmpty) return const SizedBox.shrink();
 
+  Widget _buildFilterChips(ProposalService service) {
+    final fields = ProposalService.predefinedFields;
     return SizedBox(
       height: 35,
       child: ListView.separated(
@@ -154,7 +184,7 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
       ),
     );
   }
-  
+
   Widget _buildProposalList(List<Proposal> proposalList) {
     if (proposalList.isEmpty) {
       final hasActiveFilter = Provider.of<ProposalService>(context, listen: false).hasActiveFilterOrSearch;
@@ -170,7 +200,6 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
     );
   }
 
-  // ⭐ STAR SERVICE: This is the updated, more compact card design.
   Widget _buildProposalCard(Proposal proposal, ProposalService service) {
     final formattedDate = DateFormat('MMM d, yyyy').format(proposal.submissionDate);
     final formattedAmount = NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(proposal.offeredAmount);
@@ -195,10 +224,8 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
                     ],
                   ),
                 ),
-                if (proposal.status == ProposalStatus.Active)
-                  _buildPopupMenu(proposal, service)
-                else
-                  _buildStatusChip(context, proposal),
+                if (proposal.status == ProposalStatus.Active) _buildPopupMenu(proposal, service)
+                else _buildStatusChip(context, proposal),
               ],
             ),
             const Divider(height: 20),
@@ -216,33 +243,24 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
     );
   }
   
-  // ⭐ STAR SERVICE: This is the updated, more compact button design.
   Widget _buildActionButtons(Proposal proposal, ProposalService service) {
     switch (proposal.status) {
       case ProposalStatus.Active:
         return Padding(
           padding: const EdgeInsets.only(top: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => service.declineProposal(proposal.id),
-                style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-                child: const Text('Decline'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () => service.acceptProposal(proposal.id),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                child: const Text('Accept'),
-              ),
-            ],
-          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            TextButton(
+              onPressed: () => service.declineProposal(proposal.id),
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+              child: const Text('Decline'),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => service.acceptProposal(proposal.id),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              child: const Text('Accept'),
+            ),
+          ]),
         );
       case ProposalStatus.Accepted:
       case ProposalStatus.Declined:
@@ -255,13 +273,7 @@ class _ProposalListScreenState extends State<ProposalListScreen> {
                 onPressed: () => service.reopenProposal(proposal.id),
                 icon: const Icon(Icons.refresh, size: 16),
                 label: const Text('Move to Active'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).primaryColor,
-                  side: BorderSide(color: Theme.of(context).primaryColor.withAlpha(120)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-                ),
+                style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).primaryColor, side: BorderSide(color: Theme.of(context).primaryColor.withAlpha(120)), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ),
           ],
